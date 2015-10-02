@@ -5,9 +5,11 @@ using Microsoft.AspNet.Authentication.Cookies;
 using Microsoft.AspNet.Builder;
 using Microsoft.AspNet.Http;
 using Microsoft.Data.Entity;
+using Microsoft.Dnx.Runtime;
 using Microsoft.Framework.DependencyInjection;
 using Microsoft.Framework.Logging;
-using Microsoft.Dnx.Runtime;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Mvc.Server.Extensions;
 using Mvc.Server.Models;
 using Mvc.Server.Providers;
@@ -44,6 +46,14 @@ namespace Mvc.Server {
                     options.AutomaticAuthentication = true;
                     options.Audience = "http://localhost:54540/";
                     options.Authority = "http://localhost:54540/";
+
+                    // Note: by default, IdentityModel beta8 now refuses to initiate non-HTTPS calls.
+                    // To work around this limitation, the configuration manager is manually
+                    // instantiated with a document retriever allowing HTTP calls.
+                    options.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                        metadataAddress: options.Authority + ".well-known/openid-configuration",
+                        configRetriever: new OpenIdConnectConfigurationRetriever(),
+                        docRetriever: new HttpDocumentRetriever { RequireHttps = false });
                 });
             });
 
@@ -93,19 +103,17 @@ namespace Mvc.Server {
             });
 #endif
 
-            app.UseOpenIdConnectServer(options => {
-                options.AuthenticationScheme = OpenIdConnectDefaults.AuthenticationScheme;
+            app.UseOpenIdConnectServer(configuration => {
+                configuration.Provider = new AuthorizationProvider();
 
                 // Note: see AuthorizationController.cs for more
                 // information concerning ApplicationCanDisplayErrors.
-                options.ApplicationCanDisplayErrors = true;
-                options.AllowInsecureHttp = true;
-
-                options.Provider = new AuthorizationProvider();
+                configuration.Options.ApplicationCanDisplayErrors = true;
+                configuration.Options.AllowInsecureHttp = true;
 
                 // Note: by default, tokens are signed using dynamically-generated
                 // RSA keys but you can also use your own certificate:
-                // options.UseCertificate(certificate);
+                // configuration.UseCertificate(certificate);
             });
 
             app.UseStaticFiles();
